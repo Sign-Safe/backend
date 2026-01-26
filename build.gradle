@@ -25,13 +25,37 @@ repositories {
 }
 
 dependencies {
-	implementation 'org.springframework.boot:spring-boot-starter'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
+
+	// DB
+	runtimeOnly 'com.mysql:mysql-connector-j'
+
+	// File/text extraction
+	implementation 'org.apache.pdfbox:pdfbox:3.0.2'
+	implementation 'org.apache.poi:poi-ooxml:5.2.5'
+
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
+
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'com.h2database:h2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+def sourceSets = sourceSets
+sourceSets {
+	main {
+		java {
+			// 실수로 생성된 잘못된 경로의 소스는 컴파일에서 제외
+			exclude 'com/example/signsafe/backend/**'
+		}
+	}
 }
