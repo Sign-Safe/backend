@@ -49,13 +49,3 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
-
-def sourceSets = sourceSets
-sourceSets {
-	main {
-		java {
-			// 실수로 생성된 잘못된 경로의 소스는 컴파일에서 제외
-			exclude 'com/example/signsafe/backend/**'
-		}
-	}
-}
