@@ -9,5 +9,4 @@ public class SignsafeApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(SignsafeApplication.class, args);
 	}
-
 }
