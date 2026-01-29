@@ -25,9 +25,7 @@ public class GeminiService {
     private String modelName;
 
     /**
-     * 제미나이한테 분석을 요청하고 결과를 DB에 저장
-     * @param userPrompt 사용자가 입력한 질문(계약서 내용)
-     * @param guestUuid  비회원 식별을 위한 고유 ID
+     * 제미나이한테 분석을 요청하고 질문과 결과를 모두 DB에 저장
      */
     public String getCompletion(String userPrompt, String guestUuid) {
         return analyzeText(userPrompt, guestUuid, "계약서 분석 요청").analysis();
@@ -35,29 +33,37 @@ public class GeminiService {
 
     public AnalysisResponse analyzeText(String userPrompt, String guestUuid, String title) {
         try {
+            // 제미나이한테 보낼 대화 리스트 생성
             List<Content> chatHistory = new ArrayList<>();
             chatHistory.add(Content.builder()
                     .role("user")
                     .parts(List.of(Part.fromText(userPrompt)))
                     .build());
 
+            // AI 답변 생성
             GenerateContentResponse response = client.models.generateContent(modelName, chatHistory, null);
             String botResponse = response.text();
 
+            // DB 저장
             ContractAnalysis analysis = ContractAnalysis.builder()
                     .guestUuid(guestUuid)
                     .contractTitle(title == null || title.isBlank() ? "계약서 분석 요청" : title)
-                    .analysisResult(botResponse)
+                    .userPrompt(userPrompt)      // 사용자의 질문 저장
+                    .analysisResult(botResponse) // AI의 분석 답변 저장
                     .build();
 
             ContractAnalysis saved = repository.save(analysis);
+
+            // 프론트엔드에 돌려줄 응답 객체 생성
             return new AnalysisResponse(
                     saved.getId(),
                     saved.getContractTitle(),
+                    saved.getUserPrompt(),
                     saved.getAnalysisResult(),
                     saved.getCreatedAt()
             );
         } catch (Exception e) {
+            System.err.println("DB 저장 혹은 AI 분석 중 에러: " + e.getMessage());
             throw new IllegalStateException("분석 중 에러가 발생했습니다.", e);
         }
     }

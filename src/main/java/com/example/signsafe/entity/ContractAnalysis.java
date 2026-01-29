@@ -21,6 +21,10 @@ public class ContractAnalysis {
     // 계약서 파일 이름이나 제목
     private String contractTitle;
 
+    // 사용자가 제미나이에게 보낸 프롬프트
+    @Column(columnDefinition = "TEXT")
+    private String userPrompt;
+
     // 제미나이가 분석한 결과 (독소조항 내용)
     @Column(columnDefinition = "TEXT")
     private String analysisResult;
