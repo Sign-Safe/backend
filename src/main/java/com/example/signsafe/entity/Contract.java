@@ -5,9 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,10 +27,9 @@ public class Contract extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // 소유 사용자(인증 도입 전까지는 null 가능).
-    @ManyToOne
-    @JoinColumn(name = "user_id")
-    private User user;
+    // 쿠키 기반 소유 식별자(UUID).
+    @Column(name = "owner_uuid", length = 36, nullable = false)
+    private String ownerUuid;
 
     // 계약서 제목.
     @Column(name = "title", length = 200)
