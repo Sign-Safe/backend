@@ -161,6 +161,7 @@ public class LawIngestionService {
 		String lawName = response.getBasicInfo() == null ? null : response.getBasicInfo().getLawName();
 
 		int index = 0;
+		int skippedDuplicates = 0;
 		for (ArticleDto article : response.getArticles()) {
 			if (index == 0) {
 				int contentLength = article.getArticleContent() == null ? 0 : article.getArticleContent().length();
@@ -169,6 +170,14 @@ public class LawIngestionService {
 					article.getArticleNo(), article.getArticleTitle(), contentLength, paragraphCount);
 			}
 			index++;
+
+			if (!StringUtils.hasText(lawId) || !StringUtils.hasText(article.getArticleNo())) {
+				continue;
+			}
+			if (lawDataRepository.existsByLawIdAndArticleNo(lawId, article.getArticleNo())) {
+				skippedDuplicates++;
+				continue;
+			}
 
 			String content = LawContentBuilder.buildContent(article);
 			if (!StringUtils.hasText(content)) {
@@ -184,6 +193,9 @@ public class LawIngestionService {
 			entities.add(entity);
 		}
 
+		if (skippedDuplicates > 0) {
+			log.info("Skipped duplicate articles: {}", skippedDuplicates);
+		}
 		return entities;
 	}
 }
