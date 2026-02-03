@@ -29,9 +29,26 @@ public class GeminiService {
     private String modelName;
 
     private static final String SYSTEM_INSTRUCTION = """
-            너는 20년 차 법률 전문가이자 독소조항 탐지기야. 사용자가 입력하는 계약서 본문을 분석하여,
-            사용자에게 불리할 수 있는 '독소조항'을 찾아내고 그 이유를 법령 근거와 함께 설명해.
-            계약과 관련 없는 질문에는 "올바른 계약서 형태가 아니다" 답하고 오직 계약 분석에만 집중해.
+            너는 20년 차 법률 전문가이자 계약서 독소조항(위험 조항) 탐지기야.
+            사용자가 입력한 계약서 본문을 분석해서, '을'에게 불리하거나 무효/분쟁 가능성이 있는 조항(독소조항)만 뽑아 정리해.
+
+            매우 중요:
+            - 이 응답은 '위험 조항' 박스에 그대로 표시된다.
+            - 따라서 '종합 의견/전체 총평/권고' 같은 내용은 절대 쓰지 마. (그건 별도 coreResult에서 처리한다)
+            - 조항별로 아래 출력 형식을 반드시 지켜.
+            - 계약서와 무관한 입력이면 반드시 "올바른 계약서 형태가 아니다" 라고만 답해.
+
+            출력 형식(마크다운, 조항마다 반복):
+            ### {번호}. {조항명/주제}
+            * **독소조항:** "..."
+            * **문제점:** ...
+            * **법령 근거:** ...
+
+            규칙:
+            - 번호는 1부터 시작
+            - 독소조항은 계약서 원문 표현을 최대한 유지해서 인용 형태로 작성
+            - 법령 근거는 가능하면 '민법 제103조'처럼 조문 형태로 구체적으로
+            - 위험 조항이 없다면: "위험 조항이 없습니다." 한 줄만 출력
             """;
 
     private static final String NOT_A_CONTRACT_MESSAGE = "올바른 계약서 형태가 아닙니다. 계약서 본문을 입력해 주세요.";
@@ -54,12 +71,16 @@ public class GeminiService {
                         userPrompt,
                         message,
                         message,
+                        message,
                         null
                 );
             }
 
             // 1) 요약 생성(원문 기반)
             String summary = generateSummary(userPrompt);
+
+            // 2) 핵심 진단 결과 생성(위험 조항 나열 제외, 결론/권고 중심)
+            String coreResult = generateCoreResult(userPrompt);
 
             // 제미나이한테 보낼 대화 리스트 생성
             List<Content> chatHistory = new ArrayList<>();
@@ -82,7 +103,7 @@ public class GeminiService {
                     .systemInstruction(Content.fromParts(Part.fromText(SYSTEM_INSTRUCTION)))
                     .build();
 
-            // AI 답변 생성
+            // AI 답변 생성(위험 조항 상세 포함)
             GenerateContentResponse response = client.models.generateContent(modelName, chatHistory, config);
             String botResponse = response.text();
 
@@ -103,6 +124,7 @@ public class GeminiService {
                     saved.getUserPrompt(),
                     saved.getAnalysisResult(),
                     summary,
+                    coreResult,
                     saved.getCreatedAt()
             );
         } catch (Exception e) {
@@ -113,7 +135,6 @@ public class GeminiService {
 
     private String generateSummary(String contractText) {
         // 요약은 계약서 '원문'을 기반으로 해야 해서 별도 프롬프트로 생성
-        // (analysis 생성 프롬프트와 분리해서, 요약 박스가 독립적으로 동작하도록 함)
         List<Content> contents = new ArrayList<>();
         contents.add(Content.builder()
                 .role("user")
@@ -136,6 +157,37 @@ public class GeminiService {
         return (text == null || text.isBlank()) ? null : text.trim();
     }
 
+    private String generateCoreResult(String contractText) {
+        // 핵심 진단 결과는 '위험 조항 나열(조항별 상세)'을 제외하고,
+        // 종합 의견/결론/권고사항만 짧게 보여주기 위한 별도 프롬프트로 생성
+        List<Content> contents = new ArrayList<>();
+        contents.add(Content.builder()
+                .role("user")
+                .parts(List.of(Part.fromText("""
+                        아래 계약서 본문을 20년 차 법률 전문가 관점에서 검토하되,
+                        '위험 조항'을 조항별로 나열하거나 길게 설명하지 말고,
+                        위험 조항을 제외한 핵심 결론(종합 의견)과 권고사항만 간결하게 작성해줘.
+
+                        constraints:
+                        - 한국어
+                        - 8~12줄
+                        - 조항 번호/제X조/항/호 같은 표기는 쓰지 말 것
+                        - 법적 효력/무효 가능성/리스크 수준을 한 번은 명확히 언급
+                        - 마지막 줄에는 '권고: ...' 형태로 요약 권고를 1줄로 끝낼 것
+
+                        [계약서 본문]
+                        """ + contractText)))
+                .build());
+
+        GenerateContentConfig cfg = GenerateContentConfig.builder()
+                .systemInstruction(Content.fromParts(Part.fromText("너는 계약서의 핵심 진단 결과(종합 의견)를 작성하는 도우미야. 반드시 한국어로, 간결하게 적어.")))
+                .build();
+
+        GenerateContentResponse res = client.models.generateContent(modelName, contents, cfg);
+        String text = res.text();
+        return (text == null || text.isBlank()) ? null : text.trim();
+    }
+
     private boolean looksLikeContractText(String text) {
         if (text == null) return false;
         String t = text.trim();
@@ -146,10 +198,6 @@ public class GeminiService {
 
         String lower = t.toLowerCase();
 
-        // 계약서/약관에서 자주 나오는 키워드/패턴(가벼운 휴리스틱)
-        // - 조/항/호 구조
-        // - 당사자 표시(갑/을), 계약/약관/동의
-        // - 의무/책임/해지/손해배상/위약금/면책/관할 등
         String[] keywords = new String[] {
                 "제1조", "제2조", "제3조", "제4조", "제5조",
                 "조", "항", "호",
@@ -171,8 +219,6 @@ public class GeminiService {
             }
         }
 
-        // 키워드가 적어도, 조문 형태가 명확하면 통과
-        // 예) "제 1 조" 처럼 공백이 섞인 경우도 고려
         if (t.matches("(?s).*(제\\s*\\d+\\s*조|\\d+\\.\\s*|\u2022|\u00B7|\\-\\s).*")) {
             return true;
         }

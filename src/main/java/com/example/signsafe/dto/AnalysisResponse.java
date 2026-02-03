@@ -8,6 +8,7 @@ public record AnalysisResponse(
         String userPrompt,
         String analysis,
         String summary,
+        String coreResult,
         LocalDateTime createdAt
 ) {
 }
