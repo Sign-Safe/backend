@@ -28,6 +28,7 @@ public class GeminiService {
     @Value("${gemini.api.model}")
     private String modelName;
 
+    // 위험 조항 박스
     private static final String SYSTEM_INSTRUCTION = """
             너는 20년 차 법률 전문가이자 계약서 독소조항(위험 조항) 탐지기야.
             사용자가 입력한 계약서 본문을 분석해서, '을'에게 불리하거나 무효/분쟁 가능성이 있는 조항(독소조항)만 뽑아 정리해.
@@ -133,8 +134,8 @@ public class GeminiService {
         }
     }
 
+    // 요약 박스
     private String generateSummary(String contractText) {
-        // 요약은 계약서 '원문'을 기반으로 해야 해서 별도 프롬프트로 생성
         List<Content> contents = new ArrayList<>();
         contents.add(Content.builder()
                 .role("user")
@@ -157,6 +158,7 @@ public class GeminiService {
         return (text == null || text.isBlank()) ? null : text.trim();
     }
 
+    // 핵심 진단 결과 박스
     private String generateCoreResult(String contractText) {
         // 핵심 진단 결과는 '위험 조항 나열(조항별 상세)'을 제외하고,
         // 종합 의견/결론/권고사항만 짧게 보여주기 위한 별도 프롬프트로 생성
@@ -164,19 +166,34 @@ public class GeminiService {
         contents.add(Content.builder()
                 .role("user")
                 .parts(List.of(Part.fromText("""
-                        아래 계약서 본문을 20년 차 법률 전문가 관점에서 검토하되,
-                        '위험 조항'을 조항별로 나열하거나 길게 설명하지 말고,
-                        위험 조항을 제외한 핵심 결론(종합 의견)과 권고사항만 간결하게 작성해줘.
-
-                        constraints:
-                        - 한국어
-                        - 8~12줄
-                        - 조항 번호/제X조/항/호 같은 표기는 쓰지 말 것
-                        - 법적 효력/무효 가능성/리스크 수준을 한 번은 명확히 언급
-                        - 마지막 줄에는 '권고: ...' 형태로 요약 권고를 1줄로 끝낼 것
-
-                        [계약서 본문]
-                        """ + contractText)))
+                    당신은 20년 차 베테랑 법률 전문가입니다. 아래 [계약서 본문]을 검토하여 '핵심 진단 결과'를 보고하십시오.
+                    반드시 아래의 [출력 형식]과 [제약 사항]을 엄격히 준수하여 작성해 주세요.
+                
+                    [제약 사항]
+                    1. 말투: 전문적이고 단호하며 신뢰감을 주는 법률 전문가의 어조를 유지할 것.
+                    2. 금지: '제X조', '항', '호' 등 구체적인 조항 번호는 절대 언급하지 말 것.
+                    3. 내용: 법적 효력, 무효 가능성, 리스크 수준을 반드시 포함할 것.
+                    4. 강조: 핵심 키워드는 **볼드체**로 작성할 것.
+                    5. 간격: 각 섹션 사이에는 반드시 빈 줄을 한 줄씩 삽입하고, 마지막 '권고' 섹션 전에는 빈 줄을 두 줄 삽입할 것.
+                
+                    [출력 형식 및 구조]
+                    ### **전반적인 위험도 평가**
+                    (이 섹션의 내용을 바로 아래 줄에 서술형으로 작성)
+                
+                    ### **핵심 리스크 사항**
+                    (이 섹션의 내용을 바로 아래 줄에 서술형으로 작성)
+                
+                    ### **법적 무효 가능성**
+                    (이 섹션의 내용을 바로 아래 줄에 서술형으로 작성)
+                
+                    ### **전문가 의견**
+                    (이 섹션의 내용을 바로 아래 줄에 서술형으로 작성)
+                
+                
+                    권고: (여기에 한 줄 요약 권고안 작성)
+                
+                    [계약서 본문]
+                    """ + contractText)))
                 .build());
 
         GenerateContentConfig cfg = GenerateContentConfig.builder()
