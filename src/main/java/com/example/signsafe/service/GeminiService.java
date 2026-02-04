@@ -58,6 +58,51 @@ public class GeminiService {
 
     private static final String NOT_A_CONTRACT_MESSAGE = "올바른 계약서 형태가 아닙니다. 계약서 본문을 입력해 주세요.";
 
+    // 수정 제안 박스
+    private static final String SUGGESTION_INSTRUCTION = """
+            당신은 계약서의 독소조항을 수정하는 법률 전문가입니다.
+            원본 계약서의 독소조항을 공정하고 합리적인 내용으로 수정하되, 원본의 구조와 형식을 최대한 유지하세요.
+
+            ## 작성 규칙
+            1. **원본 유지 원칙**
+               - 독소조항이 아닌 모든 조항은 원본 그대로 복사
+               - 조항 번호, 제목, 형식, 순서를 절대 변경하지 말 것
+               - 띄어쓰기, 문단 구분, 들여쓰기 등 원본의 형식을 정확히 유지
+
+            2. **독소조항 수정 원칙**
+               - 독소조항으로 판별된 조항만 수정
+               - 조항의 제목과 번호는 유지하고 본문 내용만 수정
+               - 원문의 구조를 최대한 유지하되, 불공정한 부분을 공정하게 수정
+               - 한쪽에만 유리한 조건을 양측에 균형있게 조정
+
+            3. **수정 방향**
+               - 무제한 → 합리적 범위 내로 제한
+               - 일방적 권리 → 쌍방의 균형있는 권리와 의무
+               - 과도한 책임 → 적정 수준의 책임
+               - 불명확한 기준 → 명확하고 객관적인 기준
+               - 부당한 제약 → 합리적인 제약
+
+            4. **형식 유지**
+               - 조항 번호는 절대 변경 금지 (예: 제1조, 제2조, ...)
+               - 조항 제목은 절대 변경 금지 (예: (업무 범위), (위약금) ...)
+               - 원본에 있던 특수문자, 따옴표, 괄호 등을 그대로 유지
+               - 원본의 문단 구분과 줄바꿈을 정확히 따를 것
+
+            5. **금지사항**
+               - 조항을 추가하거나 삭제하지 말 것
+               - 조항의 순서를 변경하지 말 것
+               - 독소조항이 아닌 부분을 임의로 수정하지 말 것
+               - 원본에 없던 내용을 새로 작성하지 말 것
+
+            ## 주의사항
+            - 원본의 모든 내용을 출력해야 합니다 (독소조항이 아닌 부분도 모두 포함)
+            - 조항 번호와 제목은 절대 변경하지 마세요
+            - 원본에 있는 조항을 임의로 삭제하거나 통합하지 마세요
+            - 수정된 내용이 자연스럽고 법률적으로 타당해야 합니다
+            - 양 당사자에게 공정하고 균형있는 내용이어야 합니다
+            - 원본의 서식(번호 매기기, 들여쓰기, 따옴표 등)을 정확히 유지하세요
+            """;
+
     /**
      * 제미나이한테 분석을 요청하고 질문과 결과를 모두 DB에 저장
      */
@@ -77,6 +122,7 @@ public class GeminiService {
                         message,
                         message,
                         message,
+                        message,
                         null
                 );
             }
@@ -86,6 +132,9 @@ public class GeminiService {
 
             // 2) 핵심 진단 결과 생성(위험 조항 나열 제외, 결론/권고 중심)
             String coreResult = generateCoreResult(userPrompt);
+
+            // 3) 수정 제안 생성(원문 기반, 원본 형식 유지)
+            String suggestion = generateSuggestion(userPrompt);
 
             // 제미나이한테 보낼 대화 리스트 생성
             List<Content> chatHistory = new ArrayList<>();
@@ -130,6 +179,7 @@ public class GeminiService {
                     saved.getAnalysisResult(),
                     summary,
                     coreResult,
+                    suggestion,
                     saved.getCreatedAt()
             );
         } catch (Exception e) {
@@ -240,6 +290,25 @@ public class GeminiService {
         return (text == null || text.isBlank()) ? null : text.trim();
     }
 
+    // 수정 제안 박스
+    private String generateSuggestion(String contractText) {
+        List<Content> contents = new ArrayList<>();
+        contents.add(Content.builder()
+                .role("user")
+                .parts(List.of(Part.fromText("""
+                        [계약서 본문]
+                        """ + contractText)))
+                .build());
+
+        GenerateContentConfig cfg = GenerateContentConfig.builder()
+                .systemInstruction(Content.fromParts(Part.fromText(SUGGESTION_INSTRUCTION)))
+                .build();
+
+        GenerateContentResponse res = client.models.generateContent(modelName, contents, cfg);
+        String text = res.text();
+        return (text == null || text.isBlank()) ? null : text.trim();
+    }
+
     private boolean looksLikeContractText(String text) {
         if (text == null) return false;
         String t = text.trim();
@@ -278,3 +347,4 @@ public class GeminiService {
         return false;
     }
 }
+

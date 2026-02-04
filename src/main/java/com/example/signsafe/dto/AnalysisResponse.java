@@ -9,6 +9,7 @@ public record AnalysisResponse(
         String analysis,
         String summary,
         String coreResult,
+        String suggestion,
         LocalDateTime createdAt
 ) {
 }
