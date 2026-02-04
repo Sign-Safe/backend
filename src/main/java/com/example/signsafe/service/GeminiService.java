@@ -14,6 +14,7 @@ import com.google.genai.types.ThinkingConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +25,7 @@ public class GeminiService {
 
     private final Client client;
     private final ContractAnalysisRepository repository;
+    private final LawDataSearchService lawDataSearchService;
 
     @Value("${gemini.api.model}")
     private String modelName;
@@ -52,15 +54,28 @@ public class GeminiService {
                         title == null || title.isBlank() ? "계약서 분석 요청" : title,
                         userPrompt,
                         NOT_A_CONTRACT_MESSAGE,
-                        null
+                        null,
+                        false,
+                        List.of(),
+                        List.of()
                 );
+            }
+
+            LawDataSearchService.LawContextResult lawContextResult = lawDataSearchService.buildLawContext(userPrompt);
+            String lawContext = lawContextResult.context();
+            String promptForModel = userPrompt;
+            if (StringUtils.hasText(lawContext)) {
+                promptForModel = userPrompt
+                        + "\n\n[관련 법령 발췌]\n"
+                        + lawContext
+                        + "\n\n위 법령을 근거로 계약서를 분석해.";
             }
 
             // 제미나이한테 보낼 대화 리스트 생성
             List<Content> chatHistory = new ArrayList<>();
             chatHistory.add(Content.builder()
                     .role("user")
-                    .parts(List.of(Part.fromText(userPrompt)))
+                    .parts(List.of(Part.fromText(promptForModel)))
                     .build());
 
             // Tools (Google Search) + System instruction + Thinking config
@@ -97,7 +112,10 @@ public class GeminiService {
                     saved.getContractTitle(),
                     saved.getUserPrompt(),
                     saved.getAnalysisResult(),
-                    saved.getCreatedAt()
+                    saved.getCreatedAt(),
+                    StringUtils.hasText(lawContext),
+                    lawContextResult.keywords(),
+                    lawContextResult.snippets()
             );
         } catch (Exception e) {
             System.err.println("DB 저장 혹은 AI 분석 중 에러: " + e.getMessage());
