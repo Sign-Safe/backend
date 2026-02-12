@@ -13,12 +13,12 @@ AI 기반 계약서 독소조항 탐지 및 법률 자문 서비스
 
 ```mermaid
 flowchart LR
-  Client[Client (React)] --> Controller[Spring Boot Controller]
-  Controller --> Tika[Text Extractor (Apache Tika)]
-  Controller --> LawSearch[Law Search Service]
-  LawSearch --> DB[(MySQL: law_data)]
-  Controller --> Gemini[Gemini Service]
-  Gemini --> GeminiAPI[Google Gemini API]
+  Client["Client (React)"] --> Controller["Spring Boot Controller"]
+  Controller --> Tika["Text Extractor (Apache Tika)"]
+  Controller --> LawSearch["Law Search Service"]
+  LawSearch --> DB[("MySQL: law_data")]
+  Controller --> Gemini["Gemini Service"]
+  Gemini --> GeminiAPI["Google Gemini API"]
   GeminiAPI --> Controller
   Controller --> Client
 ```
