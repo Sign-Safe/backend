@@ -60,6 +60,8 @@ public class GeminiService {
 
     private static final String NOT_A_CONTRACT_MESSAGE = "올바른 계약서 형태가 아닙니다. 계약서 본문을 입력해 주세요.";
 
+    private static final String NON_CONTRACT_REASON_PREFIX = "계약서가 아닙니다.";
+
     // 수정 제안 박스
     private static final String SUGGESTION_INSTRUCTION = """
             당신은 계약서의 독소조항을 수정하는 법률 전문가입니다.
@@ -114,8 +116,8 @@ public class GeminiService {
 
     public AnalysisResponse analyzeText(String userPrompt, String guestUuid, String title) {
         try {
+            // 1차: 짧은 텍스트 등 명백히 계약서가 아닌 경우 빠르게 컷
             if (!looksLikeContractText(userPrompt)) {
-                // 계약서가 아닌 입력은 AI 호출/DB 저장 없이 즉시 응답
                 String message = NOT_A_CONTRACT_MESSAGE;
                 return new AnalysisResponse(
                         null,
@@ -128,7 +130,32 @@ public class GeminiService {
                         null,
                         false,
                         List.of(),
-                        List.of()
+                        List.of(),
+                        false
+                );
+            }
+
+            // 2차: 계약서처럼 보이지만 실제 계약서가 아닌 문서(이력서/소개글/공지 등)를 LLM으로 분류
+            ContractClassification classification = classifyContractText(userPrompt);
+            if (!classification.isContract) {
+                String msg = NON_CONTRACT_REASON_PREFIX + " " + (classification.reason == null ? "" : classification.reason.trim());
+                if (msg.isBlank()) {
+                    msg = NON_CONTRACT_REASON_PREFIX;
+                }
+                // 계약서가 아니면 본 분석을 수행하지 않고, 전용 화면으로 보낼 수 있게 동일 메시지로 채움
+                return new AnalysisResponse(
+                        null,
+                        title == null || title.isBlank() ? "계약서 분석 요청" : title,
+                        userPrompt,
+                        msg,
+                        msg,
+                        msg,
+                        msg,
+                        null,
+                        false,
+                        List.of(),
+                        List.of(),
+                        false
                 );
             }
 
@@ -145,10 +172,10 @@ public class GeminiService {
             // 1) 요약 생성(원문 기반)
             String summary = generateSummary(userPrompt);
 
-            // 2) 핵심 진단 결과 생성(위험 조항 나열 제외, 결론/권고 중심)
+            // 2) 핵심 진단 결과 생성
             String coreResult = generateCoreResult(userPrompt);
 
-            // 3) 수정 제안 생성(원문 기반, 원본 형식 유지)
+            // 3) 수정 제안 생성
             String suggestion = generateSuggestion(userPrompt);
 
             // 제미나이한테 보낼 대화 리스트 생성
@@ -198,11 +225,68 @@ public class GeminiService {
                     saved.getCreatedAt(),
                     StringUtils.hasText(lawContext),
                     lawContextResult.keywords(),
-                    lawContextResult.snippets()
+                    lawContextResult.snippets(),
+                    true
             );
         } catch (Exception e) {
             System.err.println("DB 저장 혹은 AI 분석 중 에러: " + e.getMessage());
             throw new IllegalStateException("분석 중 에러가 발생했습니다.", e);
+        }
+    }
+
+    private static final class ContractClassification {
+        private final boolean isContract;
+        private final String reason;
+
+        private ContractClassification(boolean isContract, String reason) {
+            this.isContract = isContract;
+            this.reason = reason;
+        }
+    }
+
+    /**
+     * 계약서 여부를 짧게 분류합니다. 계약서가 아니면 한 줄 사유를 반환합니다.
+     */
+    private ContractClassification classifyContractText(String text) {
+        try {
+            List<Content> contents = new ArrayList<>();
+            contents.add(Content.builder()
+                    .role("user")
+                    .parts(List.of(Part.fromText("""
+                            아래 텍스트가 법적 구속력이 있는 '계약서 본문'인지 판별해.
+                            - 계약서 본문이면: EXACTLY "CONTRACT" 한 단어만 출력
+                            - 계약서 본문이 아니면: EXACTLY "NOT_CONTRACT: "로 시작하고, 뒤에 1문장 사유를 한국어로 출력
+                            - 다른 설명/형식/마크다운/여분 텍스트 금지
+
+                            [텍스트]
+                            """ + text)))
+                    .build());
+
+            GenerateContentConfig cfg = GenerateContentConfig.builder()
+                    .thinkingConfig(ThinkingConfig.builder().build())
+                    .build();
+
+            GenerateContentResponse res = client.models.generateContent(modelName, contents, cfg);
+            String out = res.text();
+            if (out == null) {
+                return new ContractClassification(true, null);
+            }
+
+            String trimmed = out.trim();
+            if (trimmed.equalsIgnoreCase("CONTRACT")) {
+                return new ContractClassification(true, null);
+            }
+
+            if (trimmed.startsWith("NOT_CONTRACT:")) {
+                String reason = trimmed.substring("NOT_CONTRACT:".length()).trim();
+                return new ContractClassification(false, reason.isEmpty() ? "계약서 본문으로 보기 어려운 문서입니다." : reason);
+            }
+
+            // 예외 케이스: 모델이 형식을 어겼으면 보수적으로 '계약서'로 처리(기존 동작 유지)
+            return new ContractClassification(true, null);
+        } catch (Exception e) {
+            // 분류 실패 시 기존 동작 유지
+            return new ContractClassification(true, null);
         }
     }
 

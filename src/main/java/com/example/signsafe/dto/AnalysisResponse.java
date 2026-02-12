@@ -14,6 +14,7 @@ public record AnalysisResponse(
         LocalDateTime createdAt,
         boolean lawDataUsed,
         List<String> lawKeywords,
-        List<String> lawSnippets
+        List<String> lawSnippets,
+        boolean isContract
 ) {
 }
